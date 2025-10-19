@@ -1,0 +1,58 @@
+name: Sync FrogPilot
+on:
+  # 1. Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+  
+  # 2. Runs the workflow on a schedule
+  schedule:
+    # This runs "at 01:00 on Sunday" (one hour after the other sync)
+    - cron: '0 1 * * 0'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. Check out your FrogPilot branch from your repo
+      - name: Checkout FrogPilot branch
+        uses: actions/checkout@v4
+        with:
+          repository: SMJD11/FrogPilot   # Your repo
+          ref: FrogPilot              # Your branch to update
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+
+      # 2. Add the "upstream" repo (FrogAi) as a remote
+      - name: Add FrogAi remote and fetch
+        run: |
+          git remote add upstream-frogai https://github.com/FrogAi/FrogPilot.git
+          git fetch upstream-frogai FrogPilot
+
+      # 3. Check if your branch is already up-to-date
+      - name: Check for new commits
+        id: check
+        run: |
+          LOCAL_SHA=$(git rev-parse HEAD)
+          UPSTREAM_SHA=$(git rev-parse upstream-frogai/FrogPilot)
+          
+          echo "Your SHA: $LOCAL_SHA"
+          echo "Upstream SHA: $UPSTREAM_SHA"
+          
+          if [ "$LOCAL_SHA" = "$UPSTREAM_SHA" ]; then
+            echo "Branch is already up-to-date."
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "New commits found. Syncing..."
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      # 4. Perform the hard reset ONLY if changes were found
+      - name: Hard reset to upstream-frogai/FrogPilot
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions-bot@github.com"
+          git reset --hard upstream-frogai/FrogPilot
+          
+      # 5. Force-push the changes back to your repo
+      - name: Force push changes
+        if: steps.check.outputs.changed == 'true'
+        run: git push origin FrogPilot --force
